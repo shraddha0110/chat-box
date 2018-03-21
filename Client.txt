@@ -1,0 +1,218 @@
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.Frame;
+import java.awt.Label;
+import java.awt.Panel;
+import java.awt.TextArea;
+import java.awt.TextField;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.swing.JButton;
+import javax.swing.JOptionPane;
+
+public class Client implements ActionListener {
+
+    ChatMessage myObject;
+    boolean sendingdone = false, receivingdone = false;
+    Scanner scan;
+    Socket socketToServer;
+    ObjectOutputStream myOutputStream;
+    ObjectInputStream myInputStream;
+    Frame f;
+    Panel subframe;
+    TextField tf;
+    TextField userName;
+    TextArea ta;
+    JButton whoIsIn;
+    JButton showMessages;
+    JButton connect;
+    JButton disConnect;
+    Set<String> onlineuserList = new HashSet<String>();
+    Set<String> messagesList = new HashSet<String>();
+    boolean flg = false;
+
+    Thread thread;
+
+    public Client() {
+
+        f = new Frame();
+        f.setSize(600, 400);
+        f.setTitle("Chat Client");
+        f.setLayout(new BorderLayout());
+        f.addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent we) {
+                System.exit(0);
+            }
+        });
+        subframe = new Panel();
+        Label name = new Label("Name: ");
+        name.setPreferredSize(new Dimension(90, 60));
+        subframe.add(name);
+        userName = new TextField();
+        userName.setPreferredSize(new Dimension(90, 30));
+        subframe.add(userName);
+        connect = new JButton("Connect");
+        connect.setPreferredSize(new Dimension(90, 30));
+        connect.addActionListener(this);
+        subframe.add(connect);
+        disConnect = new JButton("Disconnect");
+        disConnect.setPreferredSize(new Dimension(120, 30));
+        disConnect.setEnabled(false);
+        disConnect.addActionListener(this);
+        subframe.add(disConnect);
+        whoIsIn = new JButton("Show Members");
+        whoIsIn.addActionListener(this);
+        whoIsIn.setEnabled(false);
+        whoIsIn.setPreferredSize(new Dimension(130, 30));
+        subframe.add(whoIsIn);
+        f.add(subframe, BorderLayout.NORTH);
+        tf = new TextField();
+        tf.setPreferredSize(new Dimension(150, 30));
+        tf.setEnabled(false);
+        tf.addActionListener(this);
+        Panel p = new Panel();
+        Label l = new Label();
+        l.setText("Message: ");
+        showMessages = new JButton("History");
+        showMessages.setEnabled(false);
+        showMessages.addActionListener(this);
+        p.add(l);
+        p.add(tf);
+        p.add(showMessages);
+        f.add(p, BorderLayout.SOUTH);
+        ta = new TextArea();
+        ta.setEditable(false);
+        f.add(ta, BorderLayout.CENTER);
+
+        f.setVisible(true);
+
+    }
+
+    public void actionPerformed(ActionEvent ae) {
+        Object o = ae.getSource();
+        if (o == whoIsIn) {
+            onlineUserList();
+        } else if (o == showMessages) {
+            showMessageList();
+        } else if (o == connect) {
+
+            if (userName.getText().equalsIgnoreCase("")) {
+                JOptionPane.showMessageDialog(userName, "Please enter your name first!");
+            } else {
+                System.out.println("User: " + userName.getText());
+                thread = new Thread(new ChatMessagenger());
+                thread.start();
+
+                disConnect.setEnabled(true);
+                connect.setEnabled(false);
+                whoIsIn.setEnabled(true);
+                showMessages.setEnabled(true);
+                tf.setEnabled(true);
+            }
+
+        } else if (o == disConnect) {
+            disConnect.setEnabled(false);
+            connect.setEnabled(true);
+            //flg=true;
+            System.out.println("user==" + userName.getText());
+            try {
+                socketToServer.close();
+                thread.stop();
+                ta.append("Connection closed \n");
+            } catch (IOException ex) {
+                Logger.getLogger(Client.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        } else {
+            userName.setEnabled(false);
+            myObject = new ChatMessage();
+            myObject.setMessage(tf.getText());
+            myObject.setName(userName.getText());
+            tf.setText("");
+
+            try {
+                myOutputStream.reset();
+                myOutputStream.writeObject(myObject);
+            } catch (IOException ioe) {
+                System.out.println(ioe.getMessage());
+            }
+        }
+    }
+
+    class ChatMessagenger extends Thread {
+
+        public void run() {
+
+            System.out.println("Listening for messages from server . . . ");
+
+            try {
+                socketToServer = new Socket("afsaccess1.njit.edu", 4040);
+                ta.append("connection established \n");
+                myOutputStream
+                        = new ObjectOutputStream(socketToServer.getOutputStream());
+
+                myInputStream
+                        = new ObjectInputStream(socketToServer.getInputStream());
+                //start();
+                while (!receivingdone) {
+                    myObject = (ChatMessage) myInputStream.readObject();
+                    ta.append(myObject.getName() + ":    " + myObject.getMessage() + "\n");
+
+                    onlineuserList.add(myObject.getName());
+                    messagesList.add(myObject.getName() + ":    " + myObject.getMessage() + "\n");
+                }
+            } catch (IOException ioe) {
+                System.out.println("IOE: " + ioe.getMessage());
+            } catch (ClassNotFoundException cnf) {
+                System.out.println(cnf.getMessage());
+            }
+        }
+
+    }
+
+    public void onlineUserList() {
+        Iterator iterator = onlineuserList.iterator();
+
+        String message = "<html><body> <h2>Online Users </h2>";
+        String tmp = "";
+        while (iterator.hasNext()) {
+            tmp += "<h4>" + iterator.next() + " </h4>";
+        }
+        message += tmp;
+        message += "</body></html>";
+
+        JOptionPane.showMessageDialog(f, message, "Online Users", JOptionPane.OK_OPTION);
+    }
+
+    public void showMessageList() {
+
+        Iterator iterator = messagesList.iterator();
+        ta.append("\n History: \n ");
+        
+        while (iterator.hasNext()) {
+            ta.append(iterator.next() + " ");
+        }
+        
+        ta.append("End 0f History: \n \n ");
+
+    }
+
+    public static void main(String[] arg) {
+
+        Client c = new Client();
+
+    }
+}
